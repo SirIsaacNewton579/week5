@@ -68,22 +68,24 @@ void fU(double *lbd,double *f,double rho,double u,double c){
     double w = (3-g)*(lbd[1]+lbd[2])*c*c/(2*(g-1));
     f[2] = rho/(2*g)*((g-1)*lbd[0]*u*u + 0.5*lbd[1]*(u-c)*(u-c) + 0.5*lbd[2]*(u+c)*(u+c) + w);
 }
-void SWf(double *U,int Nx,double *fp,double*fm){
-    //通量矢量分裂，SW
+void LFf(double *U,int Nx,double *fp,double*fm){
+    //通量矢量分裂，LF
     double rho,u,p,h,c,w;
     double lbd[3];
     double lbdp[3];
     double ftmp[3];
+    double lmax;
     for(int j=0;j<Nx;j++){
         rho = U[j];u = U[j+Nx]/U[j];p =(g-1)*(U[j+Nx*2]-0.5*rho*u*u);
         c = sqrt(g*p/rho);
         lbd[0] = u ; lbd[1] = u-c ;lbd[2]=u+c;
+        lmax = abs(u)+c;
         //lambda+
-        for(int i=0;i<3;i++) lbdp[i] = lp(lbd[i]);
+        for(int i=0;i<3;i++) lbdp[i] = (lbd[i]+lmax)/2;
         fU(lbdp,ftmp,rho,u,c);
         for(int i=0;i<3;i++) fp[i*Nx+j] = ftmp[i];
         //lambda-
-        for(int i=0;i<3;i++) lbdp[i] = lm(lbd[i]);
+        for(int i=0;i<3;i++) lbdp[i] = (lbd[i]-lmax)/2;
         fU(lbdp,ftmp,rho,u,c);
         for(int i=0;i<3;i++) fm[i*Nx+j] = ftmp[i];
     }
@@ -119,7 +121,7 @@ void Flux_e(double *U,int Nx,double *fo,int bpn,int sn,int bopn){
     double fhmm[3]; //fhat^-_j+1/2
     double fom[3]; //原空间 f_j+1/2
     //先求f_j+1/2
-    SWf(U,Nx,fp[0],fm[0]); //通量矢量分裂SW
+    LFf(U,Nx,fp[0],fm[0]); //通量矢量分裂SW
     for(j=bopn;j<Nx-1-bopn;j++){
         for(i=0;i<3;i++) thisU[i] = 0.5*(U[j+i*Nx]+U[j+1+i*Nx]);
         Su(thisU,S); //更新S_j+1/2
@@ -215,11 +217,11 @@ int main(){
         U[1][i] = 0.;  // rho*u
         U[2][i] = (i>Nx/2 ? 0.1 : 1)/(g-1); //E = 1/2*rho*u^2 + p/(g-1)
     }
-    updateU(U[0],Nx,dx,dt,Nt,3,1);  //使用MUSCL格式，3个基架点，第一个点为j-1
+    updateU(U[0],Nx,dx,dt,Nt,3,1);  //使用GVC2格式，3个基架点，第一个点为j-1
 
     //输出
     ofstream csvfile;
-    csvfile.open("General_SW-MUSCL_t=0.14.csv", ios::out | ios::trunc);
+    csvfile.open("General_LF-MUSCL_t=0.14.csv", ios::out | ios::trunc);
     csvfile <<"x" << "," << "rho"<<","<< "u" <<","<<"p"<< endl;
     for(int i=0;i<Nx;i++){
         csvfile <<i*dx <<","<< U[0][i]<<","<<U[1][i]/U[0][i]<<","<<(g-1)*(U[2][i]-0.5*U[1][i]*U[1][i]/U[0][i]) << endl;

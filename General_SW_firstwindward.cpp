@@ -62,27 +62,30 @@ inline double lp(double lambda){
 inline double lm(double lambda){
     return 0.5*(lambda-sqrt(lambda*lambda + 1e-12));
 }
+void fU(double *lbd,double *f,double rho,double u,double c){
+    f[0] = rho/(2*g)*(2*(g-1)*lbd[0] + lbd[1] +lbd[2]);
+    f[1] = rho/(2*g)*(2*(g-1)*lbd[0]*u + lbd[1]*(u-c)+lbd[2]*(u+c));
+    double w = (3-g)*(lbd[1]+lbd[2])*c*c/(2*(g-1));
+    f[2] = rho/(2*g)*((g-1)*lbd[0]*u*u + 0.5*lbd[1]*(u-c)*(u-c) + 0.5*lbd[2]*(u+c)*(u+c) + w);
+}
 void SWf(double *U,int Nx,double *fp,double*fm){
     //通量矢量分裂，SW
     double rho,u,p,h,c,w;
-    double lambda1,lambda2,lambda3;
-    double l1p,l2p,l3p;
-    for(int i=0;i<Nx;i++){
-        rho = U[i];u = U[i+Nx]/U[i];p =(g-1)*(U[i+Nx*2]-0.5*rho*u*u);
+    double lbd[3];
+    double lbdp[3];
+    double ftmp[3];
+    for(int j=0;j<Nx;j++){
+        rho = U[j];u = U[j+Nx]/U[j];p =(g-1)*(U[j+Nx*2]-0.5*rho*u*u);
         c = sqrt(g*p/rho);
-        lambda1 = u ; lambda2 = u-c ;lambda3=u+c;
+        lbd[0] = u ; lbd[1] = u-c ;lbd[2]=u+c;
         //lambda+
-        l1p = lp(lambda1) ; l2p = lp(lambda2) ;l3p = lp(lambda3) ;
-        fp[i] = rho/(2*g)*(2*(g-1)*l1p + l2p +l3p);
-        fp[i+Nx] = rho/(2*g)*(2*(g-1)*l1p*u + l2p*(u-c)+l3p*(u+c));
-        w = (3-g)*(l2p+l3p)*c*c/(2*(g-1));
-        fp[i+2*Nx] = rho/(2*g)*((g-1)*l1p*u*u + 0.5*l2p*(u-c)*(u-c) + 0.5*l3p*(u+c)*(u+c) + w);
+        for(int i=0;i<3;i++) lbdp[i] = lp(lbd[i]);
+        fU(lbdp,ftmp,rho,u,c);
+        for(int i=0;i<3;i++) fp[i*Nx+j] = ftmp[i];
         //lambda-
-        l1p = lm(lambda1) ; l2p = lm(lambda2) ;l3p = lm(lambda3) ;
-        fm[i] = rho/(2*g)*(2*(g-1)*l1p + l2p +l3p);
-        fm[i+Nx] = rho/(2*g)*(2*(g-1)*l1p*u + l2p*(u-c)+l3p*(u+c));
-        w = (3-g)*(l2p+l3p)*c*c/(2*(g-1));
-        fm[i+2*Nx] = rho/(2*g)*((g-1)*l1p*u*u + 0.5*l2p*(u-c)*(u-c) + 0.5*l3p*(u+c)*(u+c) + w);
+        for(int i=0;i<3;i++) lbdp[i] = lm(lbd[i]);
+        fU(lbdp,ftmp,rho,u,c);
+        for(int i=0;i<3;i++) fm[i*Nx+j] = ftmp[i];
     }
 }
 //差分格式一阶迎风

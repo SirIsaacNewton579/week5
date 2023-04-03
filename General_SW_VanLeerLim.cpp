@@ -88,20 +88,19 @@ void SWf(double *U,int Nx,double *fp,double*fm){
         for(int i=0;i<3;i++) fm[i*Nx+j] = ftmp[i];
     }
 }
-//差分格式f^tilde_j+1/2 = f(...f^tilde....)
-void MUSCL_p(double *ft,double &ftm){
+void VanLeerLim_p(double *ft,double &ftm){
     int j=1;
-    double dmf=ft[j]-ft[j-1],dpf=ft[j+1]-ft[j];
-    double eps = 1e-6;
-    double s = (2*dmf*dpf+eps)/(dmf*dmf+dpf*dpf+eps);
-    ftm = ft[j]+s/4.0*((1-s/3.0)*dmf+(1+s/3.0)*dpf);
+    double dL = ft[j]-ft[j-1],dR=ft[j+1]-ft[j];
+    double eps = 1e-12;
+    double phi = (abs(dL*dR) + dL*dR+eps)/(abs(dL*dR)+dR*dR+eps);
+    ftm = ft[j]+0.5*phi*dR;
 }
-void MUSCL_m(double *ft,double &ftm){
+void VanLeerLim_m(double *ft,double &ftm){
     int j=1;
-    double dmf=ft[j]-ft[j+1],dpf=ft[j-1]-ft[j];
-    double eps = 1e-6;
-    double s = (2*dmf*dpf+eps)/(dmf*dmf+dpf*dpf+eps);
-    ftm = ft[j]+s/4.0*((1-s/3.0)*dmf+(1+s/3.0)*dpf);
+    double dL = ft[j]-ft[j+1],dR=ft[j-1]-ft[j];
+    double eps = 1e-12;
+    double phi = (abs(dL*dR) + dL*dR+eps)/(abs(dL*dR)+dR*dR+eps);
+    ftm = ft[j]+0.5*phi*dR;
 }
 void Flux_e(double *U,int Nx,double *fo,int bpn,int sn,int bopn){
     double thisU[3];
@@ -143,8 +142,8 @@ void Flux_e(double *U,int Nx,double *fo,int bpn,int sn,int bopn){
             for(i=0;i<3;i++) fhm[i][k] = ft2[i][k];
         }
 
-        for(i=0;i<3;i++) {MUSCL_p(fhp[i],fhpm[i]);MUSCL_m(fhm[i],fhmm[i]);} //ft1 = fhat^+
-        add_matrix(fhpm,fhmm,fh,1,3);  //fhat_j+1/2 = fhat^+_j+1/2+fhat^-_j+1/2
+        for(i=0;i<3;i++) {VanLeerLim_p(fhp[i],fhpm[i]);VanLeerLim_m(fhm[i],fhmm[i]);} //ft1 = fhat^+
+        add_matrix(fhpm,fhmm,fh,3,1);  //fhat_j+1/2 = fhat^+_j+1/2+fhat^-_j+1/2
         mul_matrix(invS,fh,fom,3,3,1); //f_j+1/2 = S^-1_j+1/2 * fhat^j+1/2
         for(i=0;i<3;i++) fo[i*(Nx-2*bopn-1)+j-bopn] = fom[i];
     }
@@ -215,11 +214,11 @@ int main(){
         U[1][i] = 0.;  // rho*u
         U[2][i] = (i>Nx/2 ? 0.1 : 1)/(g-1); //E = 1/2*rho*u^2 + p/(g-1)
     }
-    updateU(U[0],Nx,dx,dt,Nt,3,1);  //使用MUSCL格式，3个基架点，第一个点为j-1
+    updateU(U[0],Nx,dx,dt,Nt,3,1);  //使用NND格式，3个基架点，第一个点为j-1
 
     //输出
     ofstream csvfile;
-    csvfile.open("General_SW-MUSCL_t=0.14.csv", ios::out | ios::trunc);
+    csvfile.open("General_SW-VanLeerLim_t=0.14.csv", ios::out | ios::trunc);
     csvfile <<"x" << "," << "rho"<<","<< "u" <<","<<"p"<< endl;
     for(int i=0;i<Nx;i++){
         csvfile <<i*dx <<","<< U[0][i]<<","<<U[1][i]/U[0][i]<<","<<(g-1)*(U[2][i]-0.5*U[1][i]*U[1][i]/U[0][i]) << endl;

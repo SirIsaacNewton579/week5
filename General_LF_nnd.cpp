@@ -56,52 +56,44 @@ void invSu(double *U,double *invS){
     invS[7] = -1./(2*c)*(h-u*c);
     invS[8] = 1./(2*c)*(h+u*c);
 }
-inline double lp(double lambda){
-    return 0.5*(lambda+sqrt(lambda*lambda + 1e-12));
-}
-inline double lm(double lambda){
-    return 0.5*(lambda-sqrt(lambda*lambda + 1e-12));
-}
 void fU(double *lbd,double *f,double rho,double u,double c){
     f[0] = rho/(2*g)*(2*(g-1)*lbd[0] + lbd[1] +lbd[2]);
     f[1] = rho/(2*g)*(2*(g-1)*lbd[0]*u + lbd[1]*(u-c)+lbd[2]*(u+c));
     double w = (3-g)*(lbd[1]+lbd[2])*c*c/(2*(g-1));
     f[2] = rho/(2*g)*((g-1)*lbd[0]*u*u + 0.5*lbd[1]*(u-c)*(u-c) + 0.5*lbd[2]*(u+c)*(u+c) + w);
 }
-void SWf(double *U,int Nx,double *fp,double*fm){
-    //通量矢量分裂，SW
+void LFf(double *U,int Nx,double *fp,double*fm){
+    //通量矢量分裂，LF
     double rho,u,p,h,c,w;
     double lbd[3];
     double lbdp[3];
     double ftmp[3];
+    double lmax;
     for(int j=0;j<Nx;j++){
         rho = U[j];u = U[j+Nx]/U[j];p =(g-1)*(U[j+Nx*2]-0.5*rho*u*u);
         c = sqrt(g*p/rho);
         lbd[0] = u ; lbd[1] = u-c ;lbd[2]=u+c;
+        lmax = abs(u)+c;
         //lambda+
-        for(int i=0;i<3;i++) lbdp[i] = lp(lbd[i]);
+        for(int i=0;i<3;i++) lbdp[i] = (lbd[i]+lmax)/2;
         fU(lbdp,ftmp,rho,u,c);
         for(int i=0;i<3;i++) fp[i*Nx+j] = ftmp[i];
         //lambda-
-        for(int i=0;i<3;i++) lbdp[i] = lm(lbd[i]);
+        for(int i=0;i<3;i++) lbdp[i] = (lbd[i]-lmax)/2;
         fU(lbdp,ftmp,rho,u,c);
         for(int i=0;i<3;i++) fm[i*Nx+j] = ftmp[i];
     }
 }
-//差分格式f^tilde_j+1/2 = f(...f^tilde....)
-void MUSCL_p(double *ft,double &ftm){
-    int j=1;
-    double dmf=ft[j]-ft[j-1],dpf=ft[j+1]-ft[j];
-    double eps = 1e-6;
-    double s = (2*dmf*dpf+eps)/(dmf*dmf+dpf*dpf+eps);
-    ftm = ft[j]+s/4.0*((1-s/3.0)*dmf+(1+s/3.0)*dpf);
+double minmod(double a,double b){
+    if(!((a>0.0)^(b>0.0))) return (abs(a)>abs(b)?b:a);
+    else return 0.0;
 }
-void MUSCL_m(double *ft,double &ftm){
-    int j=1;
-    double dmf=ft[j]-ft[j+1],dpf=ft[j-1]-ft[j];
-    double eps = 1e-6;
-    double s = (2*dmf*dpf+eps)/(dmf*dmf+dpf*dpf+eps);
-    ftm = ft[j]+s/4.0*((1-s/3.0)*dmf+(1+s/3.0)*dpf);
+//差分格式f^tilde_j+1/2 = f(...f^tilde....)
+void minmod_scheme_p(double *ft,double &ftm){
+    ftm = ft[1] + 0.5*minmod(ft[1]-ft[0],ft[2]-ft[1]);
+}
+void minmod_scheme_m(double *ft,double &ftm){
+    ftm = ft[1] - 0.5*minmod(ft[1]-ft[0],ft[2]-ft[1]);
 }
 void Flux_e(double *U,int Nx,double *fo,int bpn,int sn,int bopn){
     double thisU[3];
@@ -119,7 +111,7 @@ void Flux_e(double *U,int Nx,double *fo,int bpn,int sn,int bopn){
     double fhmm[3]; //fhat^-_j+1/2
     double fom[3]; //原空间 f_j+1/2
     //先求f_j+1/2
-    SWf(U,Nx,fp[0],fm[0]); //通量矢量分裂SW
+    LFf(U,Nx,fp[0],fm[0]); //通量矢量分裂LF
     for(j=bopn;j<Nx-1-bopn;j++){
         for(i=0;i<3;i++) thisU[i] = 0.5*(U[j+i*Nx]+U[j+1+i*Nx]);
         Su(thisU,S); //更新S_j+1/2
@@ -143,8 +135,8 @@ void Flux_e(double *U,int Nx,double *fo,int bpn,int sn,int bopn){
             for(i=0;i<3;i++) fhm[i][k] = ft2[i][k];
         }
 
-        for(i=0;i<3;i++) {MUSCL_p(fhp[i],fhpm[i]);MUSCL_m(fhm[i],fhmm[i]);} //ft1 = fhat^+
-        add_matrix(fhpm,fhmm,fh,1,3);  //fhat_j+1/2 = fhat^+_j+1/2+fhat^-_j+1/2
+        for(i=0;i<3;i++) {minmod_scheme_p(fhp[i],fhpm[i]);minmod_scheme_m(fhm[i],fhmm[i]);} //ft1 = fhat^+
+        add_matrix(fhpm,fhmm,fh,3,1);  //fhat_j+1/2 = fhat^+_j+1/2+fhat^-_j+1/2
         mul_matrix(invS,fh,fom,3,3,1); //f_j+1/2 = S^-1_j+1/2 * fhat^j+1/2
         for(i=0;i<3;i++) fo[i*(Nx-2*bopn-1)+j-bopn] = fom[i];
     }
@@ -215,11 +207,11 @@ int main(){
         U[1][i] = 0.;  // rho*u
         U[2][i] = (i>Nx/2 ? 0.1 : 1)/(g-1); //E = 1/2*rho*u^2 + p/(g-1)
     }
-    updateU(U[0],Nx,dx,dt,Nt,3,1);  //使用MUSCL格式，3个基架点，第一个点为j-1
+    updateU(U[0],Nx,dx,dt,Nt,3,1);  //使用NND格式，3个基架点，第一个点为j-1
 
     //输出
     ofstream csvfile;
-    csvfile.open("General_SW-MUSCL_t=0.14.csv", ios::out | ios::trunc);
+    csvfile.open("General_LF-nnd_t=0.14.csv", ios::out | ios::trunc);
     csvfile <<"x" << "," << "rho"<<","<< "u" <<","<<"p"<< endl;
     for(int i=0;i<Nx;i++){
         csvfile <<i*dx <<","<< U[0][i]<<","<<U[1][i]/U[0][i]<<","<<(g-1)*(U[2][i]-0.5*U[1][i]*U[1][i]/U[0][i]) << endl;
